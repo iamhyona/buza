@@ -144,6 +144,9 @@ main { max-width:560px; margin:0 auto; padding:14px 16px calc(110px + env(safe-a
 .res { display:flex; justify-content:space-between; align-items:baseline; margin:20px 4px 4px; }
 .res b { font-size:17px; }
 .reset { border:0; background:none; color:var(--mute); font-size:13px; text-decoration:underline; padding:0; }
+.fgo { width:100%; border:0; background:var(--txt); color:#fff; border-radius:14px; padding:15px; font-size:16px; font-weight:700; margin-top:12px; }
+.fgo:disabled { opacity:.35; }
+.sum2 small { display:block; color:var(--mute); font-size:13px; margin-bottom:12px; }
 
 /* 플로팅 버튼 */
 .fab { position:fixed; right:20px; bottom:calc(24px + env(safe-area-inset-bottom)); width:60px; height:60px; border-radius:50%;
@@ -318,9 +321,10 @@ var OTHER = '#d1d6db';
 var now = new Date();
 var TODAY = now.getFullYear() + '-' + pad(now.getMonth() + 1) + '-' + pad(now.getDate());
 var S = { pin: ls.get('pin') || '', key: '', view: 'dash', y: now.getFullYear(), m: now.getMonth() + 1, my: now.getFullYear(), sel: null,
-  cache: {}, years: null, f: {}, edit: null, flt: { y: now.getFullYear(), m: 0, type: '', cat: [], pay: [], kind: [], q: '' }, open: {}, ls: null };
+  cache: {}, years: null, f: {}, edit: null, flt: fltDefault(), open: {}, ls: null };
 S.sort = ls.get('sort') === 'amt' ? 'amt' : 'new';   // 내역 정렬: 최신순 / 고액순
 
+function fltDefault() { var y = new Date().getFullYear(); return { from: y + '-01-01', to: y + '-12-31', type: '', cat: [], pay: [], kind: [], q: '', sort: 'new' }; }
 function pad(n) { return (n < 10 ? '0' : '') + n; }
 function fmt(n) { return Math.round(n).toLocaleString('ko-KR'); }
 function cfmt(n) { n = Math.round(n); return n >= 1000000 ? Math.round(n / 10000).toLocaleString('ko-KR') + '만' : fmt(n); }
@@ -429,7 +433,8 @@ function render(quiet) {
   if (v === 'year') return renderYear();
   if (v === 'set') return renderSettings();
   if (v === 'list') return renderList();
-  var y = v === 'month' ? S.my : v === 'filter' ? S.flt.y : S.y;
+  if (v === 'filter') return renderFilter();
+  var y = v === 'month' ? S.my : S.y;
   getYear(y).then(function (d) {
     if (S.view !== v) return;
     if (v === 'dash') renderDash(d); else if (v === 'cal') renderCal(d); else if (v === 'month') renderMonth(d); else renderFilter(d);
@@ -526,14 +531,17 @@ function itemHtml(r, withDate) {
   return '<div class="it" data-k="' + r.date.slice(0, 4) + '-' + r.m + '-' + r.r + '"><div class="ic">' + esc((r.cat || '-').charAt(0)) + '</div><div class="m"><div>' + esc(r.text || r.cat || '-') + '</div><small>' + esc(sub) + '</small></div>'
     + '<div class="a ' + (inc ? 'inc' : (r.type === '취소' || r.type === '이동') ? 'mute' : '') + '">' + (inc ? '+' : r.type === '취소' ? '+' : r.type === '이동' ? '' : '-') + fmt(r.amt) + '원</div></div>';
 }
-// 최신순: 날짜별로 묶어서 / 고액순: 금액 큰 순서로 한 목록
-function itemsHtml(rows) {
-  if (S.sort === 'amt') {
-    return '<div class="items" style="margin-top:8px">' + rows.slice().sort(function (a, b) { return (b.amt - a.amt) || (b.date + b.time).localeCompare(a.date + a.time); })
+// 최신순·과거순: 날짜별로 묶어서 / 고액순·소액순: 금액 순서로 한 목록
+var SORTS = { new: '최신순', old: '과거순', amt: '고액순', low: '소액순' };
+function itemsHtml(rows, sort) {
+  sort = sort || S.sort;
+  if (sort === 'amt' || sort === 'low') {
+    var k = sort === 'amt' ? 1 : -1;
+    return '<div class="items" style="margin-top:8px">' + rows.slice().sort(function (a, b) { return (b.amt - a.amt) * k || (b.date + b.time).localeCompare(a.date + a.time); })
       .map(function (r) { return itemHtml(r, true); }).join('') + '</div>';
   }
-  var g = {}, order = [];
-  rows.slice().sort(function (a, b) { return (b.date + b.time).localeCompare(a.date + a.time); }).forEach(function (r) {
+  var asc = sort === 'old', g = {}, order = [];
+  rows.slice().sort(function (a, b) { var c = (b.date + b.time).localeCompare(a.date + a.time); return asc ? -c : c; }).forEach(function (r) {
     if (!g[r.date]) { g[r.date] = []; order.push(r.date); } g[r.date].push(r);
   });
   return order.map(function (dt) {
@@ -543,10 +551,11 @@ function itemsHtml(rows) {
       + g[dt].map(function (r) { return itemHtml(r); }).join('') + '</div>';
   }).join('');
 }
-function sortBar() {
-  return '<div class="sortb" id="srt"><button data-s="new" class="' + (S.sort === 'new' ? 'on' : '') + '">최신순</button><button data-s="amt" class="' + (S.sort === 'amt' ? 'on' : '') + '">고액순</button></div>';
+function sortBar(keys, cur) {
+  keys = keys || ['new', 'amt']; cur = cur || S.sort;
+  return '<div class="sortb" id="srt">' + keys.map(function (k) { return '<button data-s="' + k + '" class="' + (cur === k ? 'on' : '') + '">' + SORTS[k] + '</button>'; }).join('') + '</div>';
 }
-function bindSort(fn) { $$('#srt button').forEach(function (b) { b.onclick = function () { S.sort = b.dataset.s; ls.set('sort', S.sort); fn(); }; }); }
+function bindSort(fn, set) { $$('#srt button').forEach(function (b) { b.onclick = function () { if (set) set(b.dataset.s); else { S.sort = b.dataset.s; ls.set('sort', S.sort); } fn(); }; }); }
 function bindItems() {
   $$('.it[data-k]').forEach(function (el) { el.onclick = function () {
     var p = el.dataset.k.split('-'), d = S.cache[S.key + p[0]];
@@ -641,20 +650,27 @@ function lsMatch(o, r) {
 }
 function renderList() {
   var o = S.ls; if (!o) return go('dash');
-  var p = o.y === 'all'
+  var F = S.flt;
+  var p = o.filter ? Promise.all(fYears(F).map(function (y) { return getYear(y); }))
+    : o.y === 'all'
     ? (S.years ? Promise.resolve(S.years) : call('appYears', S.pin, S.key).then(function (l) { S.years = l; return l; }))
         .then(function (l) { return Promise.all(l.map(function (x) { return getYear(x.y); })); })
     : getYear(o.y).then(function (d) { return [d]; });
   p.then(function (ds) {
     if (S.view !== 'list' || S.ls !== o) return;
-    var rows = []; ds.forEach(function (d) { rows = rows.concat(d.rows.filter(function (r) { return lsMatch(o, r); })); });
+    var rows = [];
+    if (o.filter) rows = fRows(F, ds);
+    else ds.forEach(function (d) { rows = rows.concat(d.rows.filter(function (r) { return lsMatch(o, r); })); });
     var t = totals(rows), inc = o.type === '수입';
-    $('#main').innerHTML = '<div class="nav2"><button class="back" id="lsB">' + esc(o.title) + '</button></div>' + ds.map(errCard).join('')
-      + '<div class="card big1"><small>' + esc(o.sub) + ' · ' + rows.length + '건</small><b class="' + (inc ? 'inc' : 'exp') + '">' + won(inc ? t.i : t.e) + '</b></div>'
-      + '<div class="lh"><div class="t"></div>' + sortBar() + '</div>'
-      + (rows.length ? itemsHtml(rows) : '<div class="empty">내역이 없어요</div>');
+    var head = o.filter
+      ? '<div class="card sum2"><small>' + esc(fPeriod(F)) + ' · ' + rows.length + '건</small><div class="big"><div><small>지출</small><b class="exp">' + won(t.e) + '</b></div><div><small>수입</small><b class="inc">' + won(t.i) + '</b></div></div></div>'
+      : '<div class="card big1"><small>' + esc(o.sub) + ' · ' + rows.length + '건</small><b class="' + (inc ? 'inc' : 'exp') + '">' + won(inc ? t.i : t.e) + '</b></div>';
+    $('#main').innerHTML = '<div class="nav2"><button class="back" id="lsB">' + esc(o.title) + '</button></div>' + (o.filter ? '' : ds.map(errCard).join('')) + head
+      + '<div class="lh"><div class="t"></div>' + (o.filter ? sortBar(['new', 'old', 'amt', 'low'], F.sort) : sortBar()) + '</div>'
+      + (rows.length ? itemsHtml(rows, o.filter ? F.sort : null) : '<div class="empty">내역이 없어요</div>');
     $('#lsB').onclick = function () { go(o.from || 'dash'); };
-    bindSort(renderList); bindItems();
+    if (o.filter) bindSort(renderList, function (k) { F.sort = k; }); else bindSort(renderList);
+    bindItems();
   }).catch(function (e) { $('#main').innerHTML = '<div class="empty">' + esc(errMsg(e)) + '</div>'; });
 }
 
@@ -662,44 +678,62 @@ function renderList() {
 function fchips(id, list, arr) {
   return '<div class="chips" id="' + id + '">' + list.map(function (v) { return '<button class="' + (arr.indexOf(v) >= 0 ? 'on' : '') + '" data-v="' + esc(v) + '">' + esc(v) + '</button>'; }).join('') + '</div>';
 }
-function renderFilter(d) {
-  var F = S.flt, yrs = [];
-  for (var y = now.getFullYear() + 1; y >= now.getFullYear() - 4; y--) yrs.push(y);
-  var used = function (f) { var o = {}; d.rows.forEach(function (r) { var v = f(r); if (v) o[v] = 1; }); return Object.keys(o); };
-  var merge = function (a, b) { return a.concat(b.filter(function (x) { return a.indexOf(x) < 0; })); };
-  var cats = merge(d.cats, used(function (r) { return r.cat; })), pays = merge(d.pays, used(function (r) { return r.pay; })), kinds = merge(d.kinds, used(function (r) { return r.kind; }));
-  var rows = d.rows.filter(function (r) {
-    if (F.m && r.m !== F.m) return false;
-    if (F.type === '수입' && r.type !== '수입') return false;
-    if (F.type === '지출' && (r.type === '수입' || r.type === '이동')) return false;
-    if (F.cat.length && F.cat.indexOf(r.cat) < 0) return false;
-    if (F.pay.length && F.pay.indexOf(r.pay) < 0) return false;
-    if (F.kind.length && F.kind.indexOf(r.kind) < 0) return false;
-    if (F.q && (r.text + ' ' + r.memo + ' ' + r.who + ' ' + r.cat).toLowerCase().indexOf(F.q.toLowerCase()) < 0) return false;
-    return true;
-  });
-  var t = totals(rows);
-  var h = '<div class="card"><div class="fl">기간</div><div class="sel2"><select id="fy">' + yrs.map(function (y) { return '<option ' + (y === F.y ? 'selected' : '') + '>' + y + '</option>'; }).join('') + '</select>'
-    + '<select id="fm"><option value="0">전체 월</option>' + [1,2,3,4,5,6,7,8,9,10,11,12].map(function (m) { return '<option value="' + m + '" ' + (m === F.m ? 'selected' : '') + '>' + m + '월</option>'; }).join('') + '</select></div>'
-    + '<div class="fl">구분</div><div class="chips" id="ft">' + ['전체', '지출', '수입'].map(function (v) { return '<button class="' + ((F.type || '전체') === v ? 'on' : '') + '" data-v="' + v + '">' + v + '</button>'; }).join('') + '</div>'
-    + '<div class="fl">카테고리</div>' + fchips('fc', cats, F.cat)
-    + '<div class="fl">결제수단</div>' + fchips('fp', pays, F.pay)
-    + '<div class="fl">카드·계좌</div>' + fchips('fk', kinds, F.kind)
-    + '<div class="fl">검색</div><input class="search" id="fq" placeholder="내용 · 메모 · 함께한 사람" value="' + esc(F.q) + '"></div>'
-    + '<div class="res"><span class="mute">' + rows.length + '건 <button class="reset" id="frs">필터 해제</button></span><span><b class="exp">-' + fmt(t.e) + '</b> <b class="inc">+' + fmt(t.i) + '</b></span></div>'
-    + (rows.length ? itemsHtml(rows) : '<div class="empty">조건에 맞는 내역이 없어요</div>');
-  $('#main').innerHTML = errCard(d) + h;
-  $('#fy').onchange = function () { F.y = Number(this.value); render(); };
-  $('#fm').onchange = function () { F.m = Number(this.value); renderFilter(d); };
-  $$('#ft button').forEach(function (b) { b.onclick = function () { F.type = b.dataset.v === '전체' ? '' : b.dataset.v; renderFilter(d); }; });
-  [['fc', 'cat'], ['fp', 'pay'], ['fk', 'kind']].forEach(function (p) {
-    $$('#' + p[0] + ' button').forEach(function (b) { b.onclick = function () {
-      var a = F[p[1]], i = a.indexOf(b.dataset.v); if (i >= 0) a.splice(i, 1); else a.push(b.dataset.v); renderFilter(d);
-    }; });
-  });
-  $('#fq').onchange = function () { F.q = this.value.trim(); renderFilter(d); };
-  $('#frs').onclick = function () { S.flt = { y: F.y, m: 0, type: '', cat: [], pay: [], kind: [], q: '' }; renderFilter(d); };
-  bindItems();
+// 필터: 기간(시작일~종료일)에 걸친 연도 파일
+function fYears(F) {
+  var a = [], y1 = Number(F.from.slice(0, 4)), y2 = Number(F.to.slice(0, 4));
+  for (var y = Math.max(y1, y2 - 9); y <= y2; y++) a.push(y);
+  return a;
+}
+function fMatch(F, r) {
+  if (r.date < F.from || r.date > F.to) return false;
+  if (F.type === '수입' && r.type !== '수입') return false;
+  if (F.type === '지출' && !isExp(r)) return false;
+  if (F.cat.length && F.cat.indexOf(r.cat) < 0) return false;
+  if (F.pay.length && F.pay.indexOf(r.pay) < 0) return false;
+  if (F.kind.length && F.kind.indexOf(r.kind) < 0) return false;
+  if (F.q && (r.text + ' ' + r.memo + ' ' + r.who + ' ' + r.cat).toLowerCase().indexOf(F.q.toLowerCase()) < 0) return false;
+  return true;
+}
+function fRows(F, ds) { var rows = []; ds.forEach(function (d) { rows = rows.concat(d.rows.filter(function (r) { return fMatch(F, r); })); }); return rows; }
+function fPeriod(F) { var f = function (s) { return s.slice(0, 4) + '.' + Number(s.slice(5, 7)) + '.' + Number(s.slice(8, 10)); }; return f(F.from) + ' ~ ' + f(F.to); }
+function renderFilter() {
+  var F = S.flt;
+  Promise.all(fYears(F).map(function (y) { return getYear(y); })).then(function (ds) {
+    if (S.view !== 'filter') return;
+    var all = []; ds.forEach(function (d) { all = all.concat(d.rows); });
+    var ok = ds.filter(function (d) { return !d.err; }), meta = ok.length ? ok[ok.length - 1] : lastMeta();
+    var used = function (f) { var o = {}; all.forEach(function (r) { var v = f(r); if (v) o[v] = 1; }); return Object.keys(o); };
+    var merge = function (a, b) { return a.concat(b.filter(function (x) { return a.indexOf(x) < 0; })); };
+    var cats = merge(meta.cats || [], used(function (r) { return r.cat; })), pays = merge(meta.pays || [], used(function (r) { return r.pay; })), kinds = merge(meta.kinds || [], used(function (r) { return r.kind; }));
+    var rows = fRows(F, ds), t = totals(rows);
+    var h = '<div class="card"><div class="fl">기간</div><div class="frow"><div class="f"><label>시작일</label><input type="date" id="fFrom" value="' + F.from + '"></div><div class="f"><label>종료일</label><input type="date" id="fTo" value="' + F.to + '"></div></div>'
+      + '<div class="fl">구분</div><div class="chips" id="ft">' + ['전체', '지출', '수입'].map(function (v) { return '<button class="' + ((F.type || '전체') === v ? 'on' : '') + '" data-v="' + v + '">' + v + '</button>'; }).join('') + '</div>'
+      + '<div class="fl">카테고리</div>' + fchips('fc', cats, F.cat)
+      + '<div class="fl">결제수단</div>' + fchips('fp', pays, F.pay)
+      + '<div class="fl">카드·계좌</div>' + fchips('fk', kinds, F.kind)
+      + '<div class="fl">검색</div><input class="search" id="fq" placeholder="내용 · 메모 · 함께한 사람" value="' + esc(F.q) + '">'
+      + '<div class="fl">정렬</div><div class="chips" id="fs">' + ['new', 'old', 'amt', 'low'].map(function (k) { return '<button class="' + (F.sort === k ? 'on' : '') + '" data-v="' + k + '">' + SORTS[k] + '</button>'; }).join('') + '</div></div>'
+      + '<div class="res"><span class="mute">' + rows.length + '건 <button class="reset" id="frs">필터 해제</button></span><span><b class="exp">-' + fmt(t.e) + '</b> <b class="inc">+' + fmt(t.i) + '</b></span></div>'
+      + '<button class="fgo" id="fgo"' + (rows.length ? '' : ' disabled') + '>' + (rows.length ? rows.length + '건 내역 보기' : '조건에 맞는 내역이 없어요') + '</button>';
+    $('#main').innerHTML = h;
+    var setDate = function (k, el) {
+      var v = el.value; if (!/^\d{4}-\d{2}-\d{2}$/.test(v)) { el.value = F[k]; return; }
+      F[k] = v; if (F.from > F.to) { var x = F.from; F.from = F.to; F.to = x; }
+      renderFilter();
+    };
+    $('#fFrom').onchange = function () { setDate('from', this); };
+    $('#fTo').onchange = function () { setDate('to', this); };
+    $$('#ft button').forEach(function (b) { b.onclick = function () { F.type = b.dataset.v === '전체' ? '' : b.dataset.v; renderFilter(); }; });
+    [['fc', 'cat'], ['fp', 'pay'], ['fk', 'kind']].forEach(function (p) {
+      $$('#' + p[0] + ' button').forEach(function (b) { b.onclick = function () {
+        var a = F[p[1]], i = a.indexOf(b.dataset.v); if (i >= 0) a.splice(i, 1); else a.push(b.dataset.v); renderFilter();
+      }; });
+    });
+    $$('#fs button').forEach(function (b) { b.onclick = function () { F.sort = b.dataset.v; renderFilter(); }; });
+    $('#fq').onchange = function () { F.q = this.value.trim(); renderFilter(); };
+    $('#frs').onclick = function () { S.flt = fltDefault(); renderFilter(); };
+    $('#fgo').onclick = function () { openList({ title: '필터 결과', filter: true }); };
+  }).catch(function () {});
 }
 
 /* ───── 입력·수정 ───── */
@@ -1080,7 +1114,7 @@ function softRefresh() {
   if (v === 'set') { if (S.mDirty) return; S.mEdit = null; return render(true); }
   if (v === 'year') { S.years = null; return render(true); }
   if (v === 'list' && S.ls && S.ls.y === 'all') { S.years = null; return; }
-  var y = v === 'month' ? S.my : v === 'filter' ? S.flt.y : v === 'list' && S.ls ? S.ls.y : S.y, k = S.key;
+  var y = v === 'month' ? S.my : (v === 'filter' || (v === 'list' && S.ls && S.ls.filter)) ? Number(S.flt.to.slice(0, 4)) : v === 'list' && S.ls ? S.ls.y : S.y, k = S.key;
   S.refreshing = true;
   call('appYear', S.pin, k, y).then(function (d) {
     var old = S.cache[k + y];

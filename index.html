@@ -288,7 +288,7 @@ html.lock { overflow:hidden; }
 
 <div class="dimbg" id="dimbg"></div>
 <div class="bs" id="ed">
-  <button class="cap" id="capBtn">카톡 캡처로 입력</button><input type="file" id="capIn" accept="image/*" multiple class="hide">
+  <button class="cap" id="capBtn">캡처로 입력 (카톡 · 결제 알림)</button><input type="file" id="capIn" accept="image/*" multiple class="hide">
   <div class="seg" id="type"><button data-v="지출" class="e">지출</button><button data-v="수입" class="i">수입</button></div>
   <div class="amt"><input id="fAmt" inputmode="numeric" placeholder="0"><span>원</span></div>
   <div class="frow"><div class="f"><label>날짜<span class="req">*</span></label><input id="fDate" type="date"></div><div class="f"><label>시각</label><input id="fTime" type="time"></div></div>
@@ -363,7 +363,7 @@ function call(fn) {
   return run(tries).then(function (o) { if (!o.ok) throw new Error(o.error || '오류가 났어요'); return o.data; });
 }
 // 새 버전이 올라오면 자동으로 새로 불러오기 (깃허브 페이지는 브라우저에 최대 10분 저장됨)
-var APP_VER = '20261004e';
+var APP_VER = '20261004f';
 function checkUpdate() {
   fetch('index.html?t=' + Date.now(), { cache: 'no-store' }).then(function (r) { return r.text(); }).then(function (t) {
     var m = t.match(/var APP_VER = '(\w+)'/);
@@ -1120,8 +1120,12 @@ function readCaps(fs) {
   next().then(function () {
     hold('');
     if (!items.length) { toast('지출 내역을 찾지 못했어요. 직접 입력해 주세요'); return openEd(null); }
-    RV = items.map(function (it) { return { on: true, book: it.book || S.key, type: it.type || '지출', text: it.text || '', amt: it.amt, time: it.time || '', cat: it.cat || '' }; });
-    $('#rvDate').value = TODAY;
+    RV = items.map(function (it) { return { on: true, book: it.book || S.key, type: it.type || '지출', text: it.text || '', amt: it.amt, time: it.time || '', cat: it.cat || '', kind: it.kind || '', date: it.date || '' }; });
+    // 결제 알림은 날짜(어제·10월 3일 등)를 읽어 옴: 모두 같은 날이면 위 날짜칸에, 다르면 건마다 따로
+    var ds = RV.map(function (it) { return it.date; }).filter(function (d, i, a) { return d && a.indexOf(d) === i; });
+    var allDated = RV.every(function (it) { return it.date; });
+    $('#rvDate').value = allDated && ds.length === 1 ? ds[0] : TODAY;
+    if (!(allDated && ds.length > 1)) RV.forEach(function (it) { it.date = ''; });
     loadRv(true);
   }).catch(function (e) { hold(''); toast(errMsg(e)); });
 }
@@ -1139,7 +1143,7 @@ function loadRv(first) {
     var D = {}; books.forEach(function (k, i) { D[k] = ds[i]; });
     RV.forEach(function (it) {
       var d = D[it.book];
-      it.dup = !!d && d.rows.some(function (r) { return r.date === date && r.amt === Number(it.amt) && r.type !== '수입'; });
+      it.dup = !!d && d.rows.some(function (r) { return r.date === (it.date || date) && r.amt === Number(it.amt) && r.type !== '수입'; });
       if (first && it.dup) it.on = false;
     });
     S.rvD = D;
@@ -1158,6 +1162,7 @@ function drawRv() {
       + '<input class="w" data-f="text" placeholder="내역 *" value="' + esc(it.text) + '">'
       + '<input data-f="amt" inputmode="numeric" placeholder="금액 *" value="' + (it.amt ? fmt(it.amt) : '') + '">'
       + '<input data-f="time" type="time" value="' + esc(it.time) + '">'
+      + (it.date ? '<input class="w" data-f="date" type="date" value="' + esc(it.date) + '">' : '')
       + '<select class="w" data-f="cat"><option value="">카테고리 (선택)</option>' + cl.map(function (c) { return '<option ' + (c === it.cat ? 'selected' : '') + '>' + esc(c) + '</option>'; }).join('') + '</select>'
       + (it.dup ? '<div class="dup w">이 날짜에 같은 금액 내역이 이미 있어요</div>' : '') + '</div></div>';
   }).join('');
@@ -1185,16 +1190,20 @@ $('#rvS').onclick = function () {
     if (!(list[i].amt > 0)) return toast('금액이 빈 내역이 있어요');
     if (!String(list[i].text).trim()) return toast('내역이 빈 항목이 있어요');
   }
-  var y = Number(date.slice(0, 4)), books = {};
-  list.forEach(function (it) { (books[it.book] = books[it.book] || []).push({ type: it.type, amt: it.amt, date: date, time: it.time, text: String(it.text).trim(), cat: it.cat }); });
+  var ys = {}, books = {};
+  list.forEach(function (it) {
+    var dt = it.date || date; ys[Number(dt.slice(0, 4))] = 1;
+    (books[it.book] = books[it.book] || []).push({ type: it.type, amt: it.amt, date: dt, time: it.time, text: String(it.text).trim(), cat: it.cat, kind: it.kind || '' });
+  });
+  ys = Object.keys(ys).map(Number);
   var keys = Object.keys(books), done = 0, msg = [];
   var bs = $('#rv'); bs.classList.add('busy');
   var step = function () {
     if (done >= keys.length) return Promise.resolve();
     var k = keys[done++];
-    return call('appSaveMany', S.pin, k, books[k]).then(function (n) { msg.push(NAMES[k] + ' ' + n + '건'); delete S.cache[k + y]; return step(); });
+    return call('appSaveMany', S.pin, k, books[k]).then(function (n) { msg.push(NAMES[k] + ' ' + n + '건'); ys.forEach(function (y) { delete S.cache[k + y]; }); return step(); });
   };
-  step().then(function () { closeBs(); toast(msg.join(', ') + ' 저장했어요'); afterChange([y]); })
+  step().then(function () { closeBs(); toast(msg.join(', ') + ' 저장했어요'); afterChange(ys); })
     .catch(function (e) { toast(errMsg(e)); }).then(function () { bs.classList.remove('busy'); });
 };
 

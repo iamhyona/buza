@@ -356,7 +356,7 @@ function call(fn) {
   return run(tries).then(function (o) { if (!o.ok) throw new Error(o.error || '오류가 났어요'); return o.data; });
 }
 // 새 버전이 올라오면 자동으로 새로 불러오기 (깃허브 페이지는 브라우저에 최대 10분 저장됨)
-var APP_VER = '20261004b';
+var APP_VER = '20261004c';
 function checkUpdate() {
   fetch('index.html?t=' + Date.now(), { cache: 'no-store' }).then(function (r) { return r.text(); }).then(function (t) {
     var m = t.match(/var APP_VER = '(\w+)'/);
@@ -730,7 +730,8 @@ function renderFilter() {
       + '<div class="fl">카드·계좌</div>' + fchips('fk', kinds, F.kind)
       + '<div class="fl">검색</div><input class="search" id="fq" placeholder="내용 · 메모 · 함께한 사람" value="' + esc(F.q) + '"></div>'
       + '<div class="res"><span class="mute">' + rows.length + '건 <button class="reset" id="frs">필터 해제</button></span><span><b class="exp">-' + fmt(t.e) + '</b> <b class="inc">+' + fmt(t.i) + '</b></span></div>'
-      + '<button class="fgo" id="fgo"' + (rows.length ? '' : ' disabled') + '>' + (rows.length ? rows.length + '건 내역 보기' : '조건에 맞는 내역이 없어요') + '</button>';
+      + '<button class="fgo" id="fgo"' + (rows.length ? '' : ' disabled') + '>' + (rows.length ? (S.fOpen ? '내역 접기' : rows.length + '건 내역 보기') : '조건에 맞는 내역이 없어요') + '</button>'
+      + (S.fOpen && rows.length ? '<div id="fres">' + itemsHtml(rows, F.sort) + '</div>' : '');   // 내역은 같은 화면 아래에 펼침
     $('#main').innerHTML = h;
     var setDate = function (k, el) {
       var v = el.value; if (!/^\d{4}-\d{2}-\d{2}$/.test(v)) { el.value = F[k]; return; }
@@ -751,7 +752,14 @@ function renderFilter() {
     $$('#fs button').forEach(function (b) { b.onclick = function () { F.sort = b.dataset.v; renderFilter(); }; });
     $('#fq').onchange = function () { F.q = this.value.trim(); renderFilter(); };
     $('#frs').onclick = function () { S.flt = fltDefault(); renderFilter(); };
-    $('#fgo').onclick = function () { openList({ title: '필터 결과', filter: true }); };
+    $('#fgo').onclick = function () {
+      S.fOpen = !S.fOpen; renderFilter();
+      if (S.fOpen) setTimeout(function () {
+        var el = $('#fgo'); if (!el || !$('#fres')) return;
+        window.scrollTo({ top: el.getBoundingClientRect().top + window.scrollY - $('header').getBoundingClientRect().bottom - 8, behavior: 'smooth' });
+      }, 80);
+    };
+    bindItems();
   }).catch(function () {});
 }
 

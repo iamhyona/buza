@@ -94,11 +94,16 @@ main { max-width:560px; margin:0 auto; padding:14px 16px calc(110px + env(safe-a
 .big1 b { font-size:26px; font-weight:800; letter-spacing:-0.02em; }
 
 /* 월별 막대 */
-.mbar { display:flex; align-items:flex-end; gap:6px; height:120px; margin-top:6px; }
+.mbar { display:flex; align-items:flex-end; gap:6px; height:120px; margin-top:6px; position:relative; }
+.avgl { position:absolute; left:0; right:0; height:0; border-top:1.5px solid #cbd5e1; pointer-events:none; }
+.avgl em { position:absolute; right:0; bottom:3px; font-size:10px; font-style:normal; font-weight:600; color:var(--mute); }
+.ct .mom { font-size:13px; font-weight:600; }
+.fil.cur { background:var(--exp); } .fil.avg { background:#cbd5e1; }
+.cmp { margin-top:12px; font-size:14px; font-weight:600; }
 .mbar div { flex:1; display:flex; flex-direction:column; align-items:center; justify-content:flex-end; height:100%; }
 .mbar i { display:block; width:100%; max-width:18px; background:#fecaca; border-radius:4px 4px 0 0; min-height:2px; }
 .mbar div.cur i { background:var(--exp); }
-.mbar span { font-size:11px; color:var(--mute); margin-top:6px; }
+.mbar span { font-size:11px; color:var(--mute); margin-top:6px; height:14px; line-height:14px; }
 
 /* 달력 */
 .cal { background:#fff; border-radius:20px; padding:14px 8px 10px; margin-bottom:12px; }
@@ -358,7 +363,7 @@ function call(fn) {
   return run(tries).then(function (o) { if (!o.ok) throw new Error(o.error || '오류가 났어요'); return o.data; });
 }
 // 새 버전이 올라오면 자동으로 새로 불러오기 (깃허브 페이지는 브라우저에 최대 10분 저장됨)
-var APP_VER = '20261004d';
+var APP_VER = '20261004e';
 function checkUpdate() {
   fetch('index.html?t=' + Date.now(), { cache: 'no-store' }).then(function (r) { return r.text(); }).then(function (t) {
     var m = t.match(/var APP_VER = '(\w+)'/);
@@ -499,9 +504,9 @@ function barCard(title, list, id, sc, field) {
 }
 function scAttr(sc) { return sc ? ' data-sc="' + esc(JSON.stringify(sc)) + '"' : ''; }
 // sc: 눌렀을 때 보여줄 범위 { y: 연도 또는 'all', m: 월(0=전체), name: 제목 앞부분, sub: 기간 설명 }
-function sumCard(t, label, sc) {
+function sumCard(t, label, sc, extra) {
   var cell = function (k, cls, v) { return sc ? '<button class="tap" data-ty="' + k + '"><small>' + k + '</small><b class="' + cls + '">' + won(v) + '</b></button>' : '<div><small>' + k + '</small><b class="' + cls + '">' + won(v) + '</b></div>'; };
-  return '<div class="card"' + scAttr(sc) + '><div class="ct">' + label + '</div><div class="big">' + cell('지출', 'exp', t.e) + cell('수입', 'inc', t.i) + '</div>'
+  return '<div class="card"' + scAttr(sc) + '><div class="ct">' + label + (extra || '') + '</div><div class="big">' + cell('지출', 'exp', t.e) + cell('수입', 'inc', t.i) + '</div>'
     + '<div class="bal"><span>남은 돈</span><b>' + won(t.i - t.e, t.i - t.e < 0 ? '-' : '') + '</b></div></div>';
 }
 // 합계·카테고리 누르면 해당 내역 목록으로
@@ -519,26 +524,54 @@ function bindMore() { $$('[data-more]').forEach(function (b) { b.onclick = funct
 function errCard(d) { return d.err ? '<div class="card"><div class="empty">' + esc(d.err) + '</div></div>' : ''; }
 
 /* ───── 대시보드 ───── */
+// 월평균 지출: 그해 지출이 있는 달의 평균 (아직 진행 중인 이번 달은 빼고)
+function monthAvg(rows, y) {
+  var cur = y === now.getFullYear() ? now.getMonth() + 1 : 0, a = [];
+  for (var i = 1; i <= 12; i++) {
+    if (i === cur) continue;
+    var e = totals(rows.filter(function (r) { return r.m === i; })).e;
+    if (e > 0) a.push(e);
+  }
+  return a.length ? { v: a.reduce(function (s, x) { return s + x; }, 0) / a.length, n: a.length } : null;
+}
+// 지난달 대비 (지출)
+function momHtml(cur, prevRows) {
+  if (!prevRows || !prevRows.length) return '';
+  var diff = cur - totals(prevRows).e;
+  return '<small class="mom ' + (diff > 0 ? 'exp' : diff < 0 ? 'inc' : '') + '">지난달 대비 ' + (diff > 0 ? '+' : diff < 0 ? '-' : '') + fmt(Math.abs(diff)) + '원</small>';
+}
+function avgCard(cur, avg) {
+  if (!avg) return '';
+  var mx = Math.max(cur, avg.v, 1), diff = Math.round(cur - avg.v);
+  var row = function (k, v, cls) { return '<li><div class="row1"><span>' + k + '</span><b>' + won(v) + '</b></div><div class="trk"><div class="fil ' + cls + '" style="width:' + Math.max(v / mx * 100, 1) + '%"></div></div></li>'; };
+  return '<div class="card"><div class="ct">월평균과 비교<small>' + avg.n + '개월 평균</small></div><ul class="leg bars">' + row('이번 달', cur, 'cur') + row('월평균', avg.v, 'avg') + '</ul>'
+    + '<div class="cmp ' + (diff > 0 ? 'exp' : diff < 0 ? 'inc' : 'mute') + '">' + (diff === 0 ? '월평균과 같아요' : '월평균보다 ' + fmt(Math.abs(diff)) + '원 ' + (diff > 0 ? '더 썼어요' : '덜 썼어요')) + '</div></div>';
+}
 function renderDash(d) {
   var mr = d.rows.filter(function (r) { return r.m === S.m; });
-  var mt = totals(mr), yt = totals(d.rows);
+  var mt = totals(mr), yt = totals(d.rows), av = monthAvg(d.rows, S.y);
+  var prev = S.m > 1 ? d.rows.filter(function (r) { return r.m === S.m - 1; }) : null;
   var msc = { y: S.y, m: S.m, name: S.m + '월', sub: S.y + '년 ' + S.m + '월' }, ysc = { y: S.y, m: 0, name: S.y + '년', sub: S.y + '년' };
   var h = '<div class="sec">월간 요약</div>' + navHead(S.y + '년 ' + S.m + '월', 'dm') + errCard(d)
-    + sumCard(mt, '이번 달 합계', msc)
+    + sumCard(mt, '이번 달 합계', msc, S.m > 1 ? momHtml(mt.e, prev) : '<small class="mom" id="mom"></small>')
+    + avgCard(mt.e, av)
     + donutCard('카테고리별 지출', sumBy(mr, function (r) { return r.cat; }), mt.e, 'mc', msc, 'cat')
     + barCard('결제수단별 지출', sumBy(mr, function (r) { return r.pay; }), 'mp', msc, 'pay')
     + barCard('카드·현금별 지출', sumBy(mr, kindOf), 'mk', msc, 'kind');
   var bym = []; for (var i = 1; i <= 12; i++) bym.push(totals(d.rows.filter(function (r) { return r.m === i; })).e);
   var mx = Math.max.apply(null, bym.concat([1]));
-  var mb = '<div class="card"><div class="ct">월별 지출<small>' + S.y + '년</small></div><div class="mbar">' + bym.map(function (v, i) {
-    return '<div class="' + (i + 1 === S.m ? 'cur' : '') + '"><i style="height:' + (v / mx * 100) + '%"></i><span>' + (i + 1) + '</span></div>';
-  }).join('') + '</div></div>';
+  var mb = '<div class="card"><div class="ct">월별 지출<small>' + S.y + '년' + (av ? ' · 월평균 ' + fmt(av.v) + '원' : '') + '</small></div><div class="mbar">' + bym.map(function (v, i) {
+    return '<div class="' + (i + 1 === S.m ? 'cur' : '') + '"><i style="height:calc((100% - 20px) * ' + (v / mx).toFixed(4) + ')"></i><span>' + (i + 1) + '</span></div>';
+  }).join('') + (av ? '<b class="avgl" style="bottom:calc(20px + (100% - 20px) * ' + (av.v / mx).toFixed(4) + ')"><em>평균</em></b>' : '') + '</div></div>';
   h += '<div class="sec">연간 요약</div>' + sumCard(yt, S.y + '년 합계', ysc) + mb
     + donutCard('카테고리별 지출', sumBy(d.rows, function (r) { return r.cat; }), yt.e, 'yc', ysc, 'cat')
     + barCard('결제수단별 지출', sumBy(d.rows, function (r) { return r.pay; }), 'yp', ysc, 'pay')
     + barCard('카드·현금별 지출', sumBy(d.rows, kindOf), 'yk', ysc, 'kind');
   $('#main').innerHTML = h;
   bindMonthNav('dm'); bindMore(); bindTaps();
+  if (S.m === 1) getYear(S.y - 1).then(function (p) {   // 1월이면 작년 12월과 비교
+    var el = $('#mom'); if (el && S.view === 'dash') el.outerHTML = momHtml(mt.e, p.rows.filter(function (r) { return r.m === 12; }));
+  }).catch(function () {});
 }
 
 /* ───── 캘린더 ───── */

@@ -155,6 +155,9 @@ main { max-width:560px; margin:0 auto; padding:14px 16px calc(110px + env(safe-a
 .dimbg { position:fixed; inset:0; background:rgba(0,0,0,.4); z-index:30; opacity:0; pointer-events:none; transition:opacity .2s; }
 .bs { position:fixed; left:0; right:0; bottom:0; z-index:31; background:#fff; border-radius:24px 24px 0 0; max-height:92vh; overflow:auto;
   padding:22px 20px calc(20px + env(safe-area-inset-bottom)); transform:translateY(105%); transition:transform .22s ease, visibility .22s; max-width:560px; margin:0 auto; visibility:hidden; }
+.bs { overflow-x:hidden; overscroll-behavior:contain; touch-action:pan-y; }
+html { overflow-x:hidden; } body { overflow-x:clip; max-width:100%; }
+html.lock { overflow:hidden; }
 .bs.open { transform:none; visibility:visible; } .dimbg.open { opacity:1; pointer-events:auto; }
 .bs h3 { margin:0 0 16px; font-size:20px; }
 /* 시트 위쪽: 손잡이 + 닫기 (아래로 쓸어내려도 닫힘) */
@@ -702,6 +705,7 @@ function openBs(id) {
   $(id).style.maxHeight = (window.innerHeight - top - 8) + 'px';
   $(id).scrollTop = 0;
   $('#dimbg').classList.add('open'); $(id).classList.add('open');
+  document.documentElement.classList.add('lock');   // 시트가 열린 동안 뒤 화면·좌우로 움직이지 않게
 }
 function bsSwipe(b) {
   var y0 = null, dy = 0;
@@ -729,7 +733,7 @@ $$('.bs').forEach(function (b) {
   h.querySelector('.bsx').onclick = closeBs;
   bsSwipe(b);
 });
-function closeBs() { $('#dimbg').classList.remove('open'); $$('.bs').forEach(function (b) { b.classList.remove('open'); }); if (document.activeElement) document.activeElement.blur(); }
+function closeBs() { document.documentElement.classList.remove('lock'); $('#dimbg').classList.remove('open'); $$('.bs').forEach(function (b) { b.classList.remove('open'); }); if (document.activeElement) document.activeElement.blur(); }
 $('#dimbg').onclick = closeBs;
 
 function chips(el, list, key) {

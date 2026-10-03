@@ -121,6 +121,8 @@ main { max-width:560px; margin:0 auto; padding:14px 16px calc(110px + env(safe-a
 .it { display:flex; align-items:center; gap:12px; padding:14px 18px; }
 .it + .it { border-top:1px solid #f2f4f6; }
 .ic { width:38px; height:38px; border-radius:12px; background:var(--chip); flex:none; display:flex; align-items:center; justify-content:center; font-size:13px; font-weight:700; color:var(--sub); }
+.ic svg { width:20px; height:20px; fill:none; stroke:currentColor; stroke-width:1.8; stroke-linecap:round; stroke-linejoin:round; }
+.ic.in { color:var(--inc); }
 .it .m { flex:1; min-width:0; } .it .m div { font-weight:600; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
 .it .m small { color:var(--mute); font-size:12px; }
 .it .a { font-weight:700; white-space:nowrap; }
@@ -356,7 +358,7 @@ function call(fn) {
   return run(tries).then(function (o) { if (!o.ok) throw new Error(o.error || '오류가 났어요'); return o.data; });
 }
 // 새 버전이 올라오면 자동으로 새로 불러오기 (깃허브 페이지는 브라우저에 최대 10분 저장됨)
-var APP_VER = '20261004c';
+var APP_VER = '20261004d';
 function checkUpdate() {
   fetch('index.html?t=' + Date.now(), { cache: 'no-store' }).then(function (r) { return r.text(); }).then(function (t) {
     var m = t.match(/var APP_VER = '(\w+)'/);
@@ -540,11 +542,42 @@ function renderDash(d) {
 }
 
 /* ───── 캘린더 ───── */
+// 카테고리 이름 → 픽토그램 (선 아이콘)
+var CAT_ICONS = [
+  [/계좌이동|이체/, 'M4 9h15l-3-3M20 15H5l3 3'],
+  [/급여|월급|상여|보너스|용돈|부수입|수입/, 'M3 7h18v10H3zM12 9.5a2.5 2.5 0 1 1 0 5 2.5 2.5 0 0 1 0-5zM6 10v4M18 10v4'],
+  [/캐시백|환급|포인트/, 'M4 12a8 8 0 1 0 2.4-5.7M4 4v4h4'],
+  [/금융|이자|투자|주식/, 'M3 17l6-6 4 4 8-8M15 7h6v6'],
+  [/간식|카페|커피|음료/, 'M4 9h12v5a5 5 0 0 1-5 5H9a5 5 0 0 1-5-5zM16 11h1.5a2.5 2.5 0 0 1 0 5H16M8 3v3M12 3v3'],
+  [/식비|외식|배달|식사|밥/, 'M7 3v18M4 3v5a3 3 0 0 0 6 0V3M17 21V3c-2.5 1-4 3.5-4 7v3h4'],
+  [/대중교통|버스|지하철|교통/, 'M6 3h12a2 2 0 0 1 2 2v11H4V5a2 2 0 0 1 2-2zM4 11h16M7 16v3M17 16v3M8 13.5h.01M16 13.5h.01'],
+  [/주차|통행/, 'M4 4h16v16H4zM10 16V8h3a2.5 2.5 0 0 1 0 5h-3'],
+  [/정비|세차|수리/, 'M15 3.5a5 5 0 0 0-5.6 6.7L3 16.6V21h4.4l6.4-6.4A5 5 0 0 0 20.5 9l-3.2 3.2-3.4-.8-.8-3.4z'],
+  [/택시|자동차|주유|차량/, 'M5 12l2-5h10l2 5M3 12h18v5H3zM6 17v2M18 17v2M7 14.5h.01M17 14.5h.01'],
+  [/쇼핑|의류|옷/, 'M5 8h14l-1 13H6zM9 8V6a3 3 0 0 1 6 0v2'],
+  [/문화|영화|공연|여가|취미/, 'M3 7h18v3a2 2 0 0 0 0 4v3H3v-3a2 2 0 0 0 0-4zM14 7v10'],
+  [/생활|관리비|마트|장보기/, 'M3 11l9-8 9 8M5 9.5V20h14V9.5M10 20v-6h4v6'],
+  [/의료|병원|약|건강/, 'M10 3h4v7h7v4h-7v7h-4v-7H3v-4h7z'],
+  [/세금|공과금|통신|요금/, 'M6 2h12v20l-3-2-3 2-3-2-3 2zM9 7h6M9 11h6M9 15h3'],
+  [/보험|저축|적금/, 'M12 3l8 3v6c0 5-3.5 8-8 9-4.5-1-8-4-8-9V6z'],
+  [/구독|디지털|넷플|앱/, 'M3 5h18v12H3zM8 21h8M10 8.5v5l4.5-2.5z'],
+  [/교육|자기관리|학원|도서|책/, 'M4 5a2 2 0 0 1 2-2h14v16H6a2 2 0 0 0-2 2zM4 19V5M8 7h8'],
+  [/데이트|연애/, 'M12 20s-7-4.5-7-10a4 4 0 0 1 7-2.6A4 4 0 0 1 19 10c0 5.5-7 10-7 10z'],
+  [/경조사|선물|축의|부의/, 'M4 10h16v10H4zM3 7h18v3H3zM12 7v13M12 7c-1.5-3.5-5.5-3-5-.5.3 1 2 1 5 .5M12 7c1.5-3.5 5.5-3 5-.5-.3 1-2 1-5 .5'],
+  [/친목|모임|친구/, 'M9 11a3 3 0 1 0 0-6 3 3 0 0 0 0 6zM3 20c0-3.3 2.7-5 6-5s6 1.7 6 5M16 5.2a3 3 0 0 1 0 5.6M21 20c0-2.6-1.5-4.2-4-4.8'],
+  [/회사|업무|사무/, 'M3 8h18v12H3zM9 8V5h6v3M3 13h18']
+];
+var DOTS = 'M6 12h.01M12 12h.01M18 12h.01';
+function catIcon(r) {
+  var c = String(r.cat || ''), d = DOTS;
+  for (var i = 0; i < CAT_ICONS.length; i++) if (CAT_ICONS[i][0].test(c)) { d = CAT_ICONS[i][1]; break; }
+  return '<svg viewBox="0 0 24 24"' + (d === DOTS ? ' style="stroke-width:3"' : '') + '><path d="' + d + '"/></svg>';
+}
 function itemHtml(r, withDate) {
   var inc = r.type === '수입';
   var md = withDate ? Number(r.date.slice(5, 7)) + '/' + Number(r.date.slice(8, 10)) : '';
   var sub = [md, r.time, r.cat, r.kind || r.pay].filter(Boolean).join(' · ') + (r.type === '취소' ? ' · 취소' : '');
-  return '<div class="it" data-k="' + r.date.slice(0, 4) + '-' + r.m + '-' + r.r + '"><div class="ic">' + esc((r.cat || '-').charAt(0)) + '</div><div class="m"><div>' + esc(r.text || r.cat || '-') + '</div><small>' + esc(sub) + '</small></div>'
+  return '<div class="it" data-k="' + r.date.slice(0, 4) + '-' + r.m + '-' + r.r + '"><div class="ic' + (r.type === '수입' ? ' in' : '') + '">' + catIcon(r) + '</div><div class="m"><div>' + esc(r.text || r.cat || '-') + '</div><small>' + esc(sub) + '</small></div>'
     + '<div class="a ' + (inc ? 'inc' : (r.type === '취소' || r.type === '이동') ? 'mute' : '') + '">' + (inc ? '+' : r.type === '취소' ? '+' : r.type === '이동' ? '' : '-') + fmt(r.amt) + '원</div></div>';
 }
 // 최신순·과거순: 날짜별로 묶어서 / 고액순·소액순: 금액 순서로 한 목록

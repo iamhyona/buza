@@ -368,7 +368,7 @@ function call(fn) {
   return run(tries).then(function (o) { if (!o.ok) throw new Error(o.error || '오류가 났어요'); return o.data; });
 }
 // 새 버전이 올라오면 자동으로 새로 불러오기 (깃허브 페이지는 브라우저에 최대 10분 저장됨)
-var APP_VER = '20261004i';
+var APP_VER = '20261004j';
 function checkUpdate() {
   fetch('index.html?t=' + Date.now(), { cache: 'no-store' }).then(function (r) { return r.text(); }).then(function (t) {
     var m = t.match(/var APP_VER = '(\w+)'/);
@@ -410,6 +410,7 @@ function pickWho(k) {
   $('#whoScr').classList.add('hide');
   go('dash');
   setTimeout(function () { if (S.key === k) getYears().catch(function () {}); }, 2500);   // YEAR 탭용 합계를 미리 받아 둠
+  setTimeout(function () { if (S.key === k && !savedMaster(k)) fetchMaster(k).catch(function () {}); }, 4000);   // 설정용 카테고리도
 }
 $('#whoBtn').onclick = showWho;
 $('#brand').onclick = function () { S.y = now.getFullYear(); S.m = now.getMonth() + 1; go('dash'); };
@@ -424,7 +425,7 @@ $('#setBtn').onclick = function () { go('set'); };
 /* ───── 데이터 ───── */
 // 빠르게 열기: 폰에 저장해 둔 지난 데이터로 먼저 그리고, 시트에서 새로 받아 바뀐 게 있으면 조용히 다시 그림
 function savedYear(k) { try { return JSON.parse(ls.get('yr:' + k) || 'null'); } catch (e) { return null; } }
-function clearSaved() { try { Object.keys(localStorage).forEach(function (x) { if (x.indexOf('yr:') === 0 || x.indexOf('yrs:') === 0) localStorage.removeItem(x); }); } catch (e) {} }
+function clearSaved() { try { Object.keys(localStorage).forEach(function (x) { if (x.indexOf('yr:') === 0 || x.indexOf('yrs:') === 0 || x.indexOf('mst:') === 0) localStorage.removeItem(x); }); } catch (e) {} }
 // 연도별 합계도 저장본으로 먼저 보여주고 뒤에서 새로 받음
 function getYears() {
   if (S.years) return Promise.resolve(S.years);
@@ -979,10 +980,18 @@ $('#del').onclick = function () {
 
 /* ───── 설정: 카테고리 마스터 ───── */
 var MT = [{ k: 'exp', n: '지출 카테고리' }, { k: 'inc', n: '수입 카테고리' }, { k: 'pay', n: '결제수단' }, { k: 'kind', n: '카드·계좌' }];
+// 설정도 폰에 저장해 둔 카테고리 목록으로 먼저 보여주고, 뒤에서 새로 받아 바뀐 게 있으면 다시 그림 (고치는 중이면 그대로 둠)
+function savedMaster(key) { try { return JSON.parse(ls.get('mst:' + key) || 'null'); } catch (e) { return null; } }
+function fetchMaster(key) { return call('appMaster', S.pin, key).then(function (m) { ls.set('mst:' + key, JSON.stringify(m)); return m; }); }
 function renderSettings() {
-  var p = S.mEdit && S.mKey === S.key ? Promise.resolve() : call('appMaster', S.pin, S.key).then(function (m) { setMaster(m); });
-  p.then(function () { if (S.view === 'set') drawSettings(); })
-    .catch(function (e) { $('#main').innerHTML = '<div class="card"><div class="empty">' + esc(errMsg(e)) + '</div></div>'; });
+  if (S.mEdit && S.mKey === S.key) return drawSettings();
+  var key = S.key, saved = savedMaster(key);
+  var net = fetchMaster(key).then(function (m) {
+    if (S.key !== key) return;
+    if (!saved || (JSON.stringify(saved) !== JSON.stringify(m) && !S.mDirty)) { setMaster(m); if (S.view === 'set') drawSettings(); }
+  });
+  if (saved) { setMaster(saved); drawSettings(); net.catch(function () {}); return; }
+  net.catch(function (e) { if (S.view === 'set') $('#main').innerHTML = '<div class="card"><div class="empty">' + esc(errMsg(e)) + '</div></div>'; });
 }
 function setMaster(m) {
   S.mKey = S.key; S.mUrl = m.url || S.mUrl; S.mTab = S.mTab || 'exp'; S.mDirty = false;
@@ -1032,7 +1041,7 @@ function drawSettings() {
     ren = ren.concat(S.mRepl || []);
     var b = $('#mSave'); b.disabled = true; b.textContent = '시트에 반영하는 중…';
     call('appSaveMaster', S.pin, S.key, data, ren, S.mKeep || []).then(function (m) {
-      m.url = S.mUrl; setMaster(m); S.cache = {}; S.years = null;
+      m.url = S.mUrl; setMaster(m); S.cache = {}; S.years = null; ls.set('mst:' + S.key, JSON.stringify(m));
       toast('저장했어요. 시트에도 반영됐어요'); if (S.view === 'set') drawSettings();
     }).catch(function (e) { toast(errMsg(e)); b.disabled = false; b.textContent = '저장'; });
   };

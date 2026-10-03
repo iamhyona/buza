@@ -368,7 +368,7 @@ function call(fn) {
   return run(tries).then(function (o) { if (!o.ok) throw new Error(o.error || '오류가 났어요'); return o.data; });
 }
 // 새 버전이 올라오면 자동으로 새로 불러오기 (깃허브 페이지는 브라우저에 최대 10분 저장됨)
-var APP_VER = '20261004h';
+var APP_VER = '20261004i';
 function checkUpdate() {
   fetch('index.html?t=' + Date.now(), { cache: 'no-store' }).then(function (r) { return r.text(); }).then(function (t) {
     var m = t.match(/var APP_VER = '(\w+)'/);
@@ -409,6 +409,7 @@ function pickWho(k) {
   $('#whoAv').className = 'av ' + k;  $('#whoNm').textContent = NAMES[k];
   $('#whoScr').classList.add('hide');
   go('dash');
+  setTimeout(function () { if (S.key === k) getYears().catch(function () {}); }, 2500);   // YEAR 탭용 합계를 미리 받아 둠
 }
 $('#whoBtn').onclick = showWho;
 $('#brand').onclick = function () { S.y = now.getFullYear(); S.m = now.getMonth() + 1; go('dash'); };
@@ -423,7 +424,22 @@ $('#setBtn').onclick = function () { go('set'); };
 /* ───── 데이터 ───── */
 // 빠르게 열기: 폰에 저장해 둔 지난 데이터로 먼저 그리고, 시트에서 새로 받아 바뀐 게 있으면 조용히 다시 그림
 function savedYear(k) { try { return JSON.parse(ls.get('yr:' + k) || 'null'); } catch (e) { return null; } }
-function clearSaved() { try { Object.keys(localStorage).forEach(function (x) { if (x.indexOf('yr:') === 0) localStorage.removeItem(x); }); } catch (e) {} }
+function clearSaved() { try { Object.keys(localStorage).forEach(function (x) { if (x.indexOf('yr:') === 0 || x.indexOf('yrs:') === 0) localStorage.removeItem(x); }); } catch (e) {} }
+// 연도별 합계도 저장본으로 먼저 보여주고 뒤에서 새로 받음
+function getYears() {
+  if (S.years) return Promise.resolve(S.years);
+  var k = 'yrs:' + S.key, key = S.key, saved = null;
+  try { saved = JSON.parse(ls.get(k) || 'null'); } catch (e) {}
+  var net = call('appYears', S.pin, S.key).then(function (l) {
+    var changed = !saved || JSON.stringify(saved) !== JSON.stringify(l);
+    if (S.key === key) S.years = l;
+    ls.set(k, JSON.stringify(l));
+    if (saved && changed && S.key === key && (S.view === 'year' || (S.view === 'list' && S.ls && S.ls.y === 'all'))) render(true);
+    return l;
+  });
+  if (saved) { S.years = saved; net.catch(function () {}); return Promise.resolve(saved); }
+  return net;
+}
 function getYear(y) {
   var k = S.key + y;
   if (S.cache[k]) return Promise.resolve(S.cache[k]);
@@ -722,7 +738,7 @@ function renderMonth(d) {
 
 /* ───── YEAR ───── */
 function renderYear() {
-  var p = S.years ? Promise.resolve(S.years) : call('appYears', S.pin, S.key).then(function (l) { S.years = l; return l; });
+  var p = getYears();
   p.then(function (l) {
     if (S.view !== 'year') return;
     var all = l.reduce(function (a, x) { return { e: a.e + x.exp, i: a.i + x.inc }; }, { e: 0, i: 0 });
@@ -752,7 +768,7 @@ function renderList() {
   var F = S.flt;
   var p = o.filter ? Promise.all(fYears(F).map(function (y) { return getYear(y); }))
     : o.y === 'all'
-    ? (S.years ? Promise.resolve(S.years) : call('appYears', S.pin, S.key).then(function (l) { S.years = l; return l; }))
+    ? getYears()
         .then(function (l) { return Promise.all(l.map(function (x) { return getYear(x.y); })); })
     : getYear(o.y).then(function (d) { return [d]; });
   p.then(function (ds) {
@@ -935,7 +951,7 @@ $('#fab').onclick = function () {
 };
 function afterChange(years) {
   years.forEach(function (y) { delete S.cache[S.key + y]; ls.set('yr:' + S.key + y, ''); });   // 저장본도 지워서 바로 새로 받음
-  S.years = null; render();
+  S.years = null; ls.set('yrs:' + S.key, ''); render();
 }
 $('#save').onclick = function () {
   var amt = Number($('#fAmt').value.replace(/[^\d]/g, ''));
@@ -1218,7 +1234,7 @@ $('#rvS').onclick = function () {
   var step = function () {
     if (done >= keys.length) return Promise.resolve();
     var k = keys[done++];
-    return call('appSaveMany', S.pin, k, books[k]).then(function (n) { msg.push(NAMES[k] + ' ' + n + '건'); ys.forEach(function (y) { delete S.cache[k + y]; ls.set('yr:' + k + y, ''); }); return step(); });
+    return call('appSaveMany', S.pin, k, books[k]).then(function (n) { msg.push(NAMES[k] + ' ' + n + '건'); ys.forEach(function (y) { delete S.cache[k + y]; ls.set('yr:' + k + y, ''); }); ls.set('yrs:' + k, ''); return step(); });
   };
   step().then(function () { closeBs(); toast(msg.join(', ') + ' 저장했어요'); afterChange(ys); })
     .catch(function (e) { toast(errMsg(e)); }).then(function () { bs.classList.remove('busy'); });

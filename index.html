@@ -368,7 +368,7 @@ function call(fn) {
   return run(tries).then(function (o) { if (!o.ok) throw new Error(o.error || '오류가 났어요'); return o.data; });
 }
 // 새 버전이 올라오면 자동으로 새로 불러오기 (깃허브 페이지는 브라우저에 최대 10분 저장됨)
-var APP_VER = '20261004g';
+var APP_VER = '20261004h';
 function checkUpdate() {
   fetch('index.html?t=' + Date.now(), { cache: 'no-store' }).then(function (r) { return r.text(); }).then(function (t) {
     var m = t.match(/var APP_VER = '(\w+)'/);
@@ -421,15 +421,27 @@ $('#fltBtn').onclick = function () { go('filter'); };
 $('#setBtn').onclick = function () { go('set'); };
 
 /* ───── 데이터 ───── */
+// 빠르게 열기: 폰에 저장해 둔 지난 데이터로 먼저 그리고, 시트에서 새로 받아 바뀐 게 있으면 조용히 다시 그림
+function savedYear(k) { try { return JSON.parse(ls.get('yr:' + k) || 'null'); } catch (e) { return null; } }
+function clearSaved() { try { Object.keys(localStorage).forEach(function (x) { if (x.indexOf('yr:') === 0) localStorage.removeItem(x); }); } catch (e) {} }
 function getYear(y) {
   var k = S.key + y;
   if (S.cache[k]) return Promise.resolve(S.cache[k]);
-  return call('appYear', S.pin, S.key, y).then(function (d) { S.cache[k] = d; return d; }, function (e) {
+  var saved = savedYear(k);
+  var net = call('appYear', S.pin, S.key, y).then(function (d) {
+    var changed = !saved || JSON.stringify(saved) !== JSON.stringify(d);
+    S.cache[k] = d; ls.set('yr:' + k, JSON.stringify(d));
+    if (saved && changed && S.key + y === k) render(true);
+    return d;
+  }, function (e) {
     var m = errMsg(e);
-    if (/NOPIN|PIN이/.test(m)) { S.pin = ''; ls.set('pin', ''); showPin(); throw e; }
+    if (/NOPIN|PIN이/.test(m)) { S.pin = ''; ls.set('pin', ''); clearSaved(); showPin(); throw e; }
+    if (saved) return saved;   // 연결이 안 되면 저장본 그대로
     var d = { y: y, rows: [], months: [], hol: [], cats: [], pays: [], kinds: [], incomeCats: [], err: m };
     S.cache[k] = d; return d;
   });
+  if (saved) { S.cache[k] = saved; net.catch(function () {}); return Promise.resolve(saved); }
+  return net;
 }
 function lastMeta() {  // 입력용 목록: 가장 최근에 불러온 해
   var y = Object.keys(S.cache).filter(function (k) { return k.indexOf(S.key) === 0 && !S.cache[k].err; }).sort().pop();
@@ -922,7 +934,7 @@ $('#fab').onclick = function () {
   if (!Object.keys(S.cache).length) getYear(now.getFullYear()).then(function () { openEd(null); }); else openEd(null);
 };
 function afterChange(years) {
-  years.forEach(function (y) { delete S.cache[S.key + y]; });
+  years.forEach(function (y) { delete S.cache[S.key + y]; ls.set('yr:' + S.key + y, ''); });   // 저장본도 지워서 바로 새로 받음
   S.years = null; render();
 }
 $('#save').onclick = function () {
@@ -1206,7 +1218,7 @@ $('#rvS').onclick = function () {
   var step = function () {
     if (done >= keys.length) return Promise.resolve();
     var k = keys[done++];
-    return call('appSaveMany', S.pin, k, books[k]).then(function (n) { msg.push(NAMES[k] + ' ' + n + '건'); ys.forEach(function (y) { delete S.cache[k + y]; }); return step(); });
+    return call('appSaveMany', S.pin, k, books[k]).then(function (n) { msg.push(NAMES[k] + ' ' + n + '건'); ys.forEach(function (y) { delete S.cache[k + y]; ls.set('yr:' + k + y, ''); }); return step(); });
   };
   step().then(function () { closeBs(); toast(msg.join(', ') + ' 저장했어요'); afterChange(ys); })
     .catch(function (e) { toast(errMsg(e)); }).then(function () { bs.classList.remove('busy'); });

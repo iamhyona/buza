@@ -290,12 +290,22 @@ function won(n, sign) { return (sign || '') + fmt(Math.abs(n)) + '<span class="w
 function esc(t) { return String(t == null ? '' : t).replace(/[&<>"]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; }); }
 // 서버: 구글 Apps Script (구글 시트와 연결된 가계부 스크립트)
 var API = 'https://script.google.com/macros/s/AKfycbwNkTpxm3YC9BZZMnD4mHIYPT8dmzKU3zdubMBKTuBCej0bRVvU6Egi7Z5Ra_Ct12QA/exec';
+// 조회 요청은 구글 서버가 잠깐 응답을 못 하면 자동으로 다시 시도 (저장·삭제는 중복될 수 있어 다시 시도하지 않음)
+var API_READ = { appHasPin: 1, appCheck: 1, appYear: 1, appYears: 1, appMaster: 1, appUsage: 1, appOcr: 1 };
 function call(fn) {
-  var args = Array.prototype.slice.call(arguments, 1);
-  return fetch(API, { method: 'POST', body: JSON.stringify({ api: fn, args: args }) })
-    .then(function (r) { if (!r.ok) throw new Error('서버에 연결하지 못했어요 (' + r.status + ')'); return r.json(); })
-    .then(function (o) { if (!o.ok) throw new Error(o.error || '오류가 났어요'); return o.data; },
-      function (e) { throw new Error(/Failed to fetch|NetworkError|Load failed/.test(String(e && e.message)) ? '인터넷 연결을 확인해 주세요' : (e.message || String(e))); });
+  var args = Array.prototype.slice.call(arguments, 1), tries = API_READ[fn] ? 3 : 1;
+  function once() {
+    return fetch(API, { method: 'POST', body: JSON.stringify({ api: fn, args: args }) })
+      .then(function (r) { if (!r.ok) { var e = new Error('서버에 연결하지 못했어요 (' + r.status + ')'); e.retry = true; throw e; } return r.json(); },
+        function (e) { var x = new Error(/Failed to fetch|NetworkError|Load failed/.test(String(e && e.message)) ? '인터넷 연결을 확인해 주세요' : (e.message || String(e))); x.retry = true; throw x; });
+  }
+  function run(n) {
+    return once().catch(function (e) {
+      if (e.retry && n > 1) return new Promise(function (ok) { setTimeout(ok, 1200); }).then(function () { return run(n - 1); });
+      throw e;
+    });
+  }
+  return run(tries).then(function (o) { if (!o.ok) throw new Error(o.error || '오류가 났어요'); return o.data; });
 }
 function errMsg(e) { return (e && e.message ? e.message : String(e)).replace(/^(Exception|Error):\s*/, ''); }
 function toast(t) { var el = $('#toast'); el.textContent = t; el.style.display = 'block'; clearTimeout(toast.h); toast.h = setTimeout(function () { el.style.display = 'none'; }, 2200); }

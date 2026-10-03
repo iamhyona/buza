@@ -352,7 +352,12 @@ function call(fn) {
   function once() {
     return fetch(API, { method: 'POST', body: JSON.stringify({ api: fn, args: args }) })
       .then(function (r) { if (!r.ok) { var e = new Error('서버에 연결하지 못했어요 (' + r.status + ')'); e.retry = true; throw e; } return r.json(); },
-        function (e) { var x = new Error(/Failed to fetch|NetworkError|Load failed/.test(String(e && e.message)) ? '인터넷 연결을 확인해 주세요' : (e.message || String(e))); x.retry = true; throw x; });
+        function (e) { var x = new Error(/Failed to fetch|NetworkError|Load failed/.test(String(e && e.message)) ? '인터넷 연결을 확인해 주세요' : (e.message || String(e))); x.retry = true; throw x; })
+      .then(function (o) {
+        // 가끔 요청이 서버의 '대기 중' 응답으로 빠짐(data 없음) → 처리되지 않은 것이므로 다시 시도
+        if (o && o.ok && !('data' in o)) { var e = new Error('서버에 전달되지 않았어요. 다시 시도해 주세요'); e.retry = true; throw e; }
+        return o;
+      });
   }
   function run(n) {
     return once().catch(function (e) {
@@ -363,7 +368,7 @@ function call(fn) {
   return run(tries).then(function (o) { if (!o.ok) throw new Error(o.error || '오류가 났어요'); return o.data; });
 }
 // 새 버전이 올라오면 자동으로 새로 불러오기 (깃허브 페이지는 브라우저에 최대 10분 저장됨)
-var APP_VER = '20261004f';
+var APP_VER = '20261004g';
 function checkUpdate() {
   fetch('index.html?t=' + Date.now(), { cache: 'no-store' }).then(function (r) { return r.text(); }).then(function (t) {
     var m = t.match(/var APP_VER = '(\w+)'/);

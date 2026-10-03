@@ -30,8 +30,8 @@ header { position:sticky; top:0; z-index:10; background:var(--bg); padding:calc(
 .who { border:0; background:#fff; border-radius:999px; padding:6px 12px 6px 6px; display:flex; align-items:center; gap:7px; font-weight:600; font-size:14px; }
 .av { width:26px; height:26px; border-radius:50%; display:inline-flex; align-items:center; justify-content:center; color:#fff; font-size:12px; font-weight:700; }
 .av.ddung { background:#0047AB; } .av.hyuna { background:#FEE500; }
-nav { display:flex; gap:4px; max-width:560px; margin:6px auto 0; border-bottom:1px solid var(--line); }
-nav button { flex:1; border:0; background:none; padding:12px 0 10px; font-size:12px; font-weight:700; letter-spacing:.03em; color:var(--faint); border-bottom:2px solid transparent; margin-bottom:-1px; }
+nav { display:flex; justify-content:space-between; max-width:560px; margin:6px auto 0; border-bottom:1px solid var(--line); }
+nav button { flex:none; border:0; background:none; padding:12px 0 10px; font-size:12px; font-weight:700; letter-spacing:.03em; color:var(--faint); border-bottom:2px solid transparent; margin-bottom:-1px; }
 nav button.on { color:var(--txt); border-bottom-color:var(--txt); }
 
 main { max-width:560px; margin:0 auto; padding:14px 16px calc(110px + env(safe-area-inset-bottom)); }
@@ -309,7 +309,7 @@ function call(fn) {
 }
 function errMsg(e) { return (e && e.message ? e.message : String(e)).replace(/^(Exception|Error):\s*/, ''); }
 function toast(t) { var el = $('#toast'); el.textContent = t; el.style.display = 'block'; clearTimeout(toast.h); toast.h = setTimeout(function () { el.style.display = 'none'; }, 2200); }
-function isExp(r) { return r.type !== '수입'; }
+function isExp(r) { return r.type !== '수입' && r.type !== '이동'; }   // 이동(계좌이동)은 지출·수입 아님
 function sv(r) { return r.type === '취소' ? -r.amt : r.amt; }   // 지출 기준 값 (취소는 차감)
 
 /* ───── 첫 화면: PIN → 사람 선택 ───── */
@@ -368,7 +368,7 @@ function sumBy(rows, fn) {
   return Object.keys(o).map(function (k) { return { k: k, v: o[k] }; }).filter(function (x) { return x.v > 0; }).sort(function (a, b) { return b.v - a.v; });
 }
 function totals(rows) {
-  var e = 0, i = 0; rows.forEach(function (r) { if (r.type === '수입') i += r.amt; else e += sv(r); });
+  var e = 0, i = 0; rows.forEach(function (r) { if (r.type === '수입') i += r.amt; else if (r.type !== '이동') e += sv(r); });
   return { e: e, i: i };
 }
 function kindOf(r) { return r.kind || (r.pay === '현금' ? '현금' : r.pay) || '기타'; }
@@ -474,7 +474,7 @@ function itemsHtml(rows) {
         var inc = r.type === '수입';
         var sub = [r.time, r.cat, r.kind || r.pay].filter(Boolean).join(' · ') + (r.type === '취소' ? ' · 취소' : '');
         return '<div class="it" data-k="' + r.date.slice(0, 4) + '-' + r.m + '-' + r.r + '"><div class="ic">' + esc((r.cat || '-').charAt(0)) + '</div><div class="m"><div>' + esc(r.text || r.cat || '-') + '</div><small>' + esc(sub) + '</small></div>'
-          + '<div class="a ' + (inc ? 'inc' : r.type === '취소' ? 'mute' : '') + '">' + (inc ? '+' : r.type === '취소' ? '+' : '-') + fmt(r.amt) + '원</div></div>';
+          + '<div class="a ' + (inc ? 'inc' : (r.type === '취소' || r.type === '이동') ? 'mute' : '') + '">' + (inc ? '+' : r.type === '취소' ? '+' : r.type === '이동' ? '' : '-') + fmt(r.amt) + '원</div></div>';
       }).join('') + '</div>';
   }).join('');
 }
@@ -561,7 +561,7 @@ function renderFilter(d) {
   var rows = d.rows.filter(function (r) {
     if (F.m && r.m !== F.m) return false;
     if (F.type === '수입' && r.type !== '수입') return false;
-    if (F.type === '지출' && r.type === '수입') return false;
+    if (F.type === '지출' && (r.type === '수입' || r.type === '이동')) return false;
     if (F.cat.length && F.cat.indexOf(r.cat) < 0) return false;
     if (F.pay.length && F.pay.indexOf(r.pay) < 0) return false;
     if (F.kind.length && F.kind.indexOf(r.kind) < 0) return false;

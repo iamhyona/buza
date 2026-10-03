@@ -355,6 +355,16 @@ function call(fn) {
   }
   return run(tries).then(function (o) { if (!o.ok) throw new Error(o.error || '오류가 났어요'); return o.data; });
 }
+// 새 버전이 올라오면 자동으로 새로 불러오기 (깃허브 페이지는 브라우저에 최대 10분 저장됨)
+var APP_VER = '20261004a';
+function checkUpdate() {
+  fetch('index.html?t=' + Date.now(), { cache: 'no-store' }).then(function (r) { return r.text(); }).then(function (t) {
+    var m = t.match(/var APP_VER = '(\w+)'/);
+    if (m && m[1] !== APP_VER && !document.querySelector('.bs.open')) location.replace(location.pathname + '?v=' + m[1]);
+  }).catch(function () {});
+}
+document.addEventListener('visibilitychange', function () { if (!document.hidden) checkUpdate(); });
+checkUpdate();
 function errMsg(e) { return (e && e.message ? e.message : String(e)).replace(/^(Exception|Error):\s*/, ''); }
 function toast(t) { var el = $('#toast'); el.textContent = t; el.style.display = 'block'; clearTimeout(toast.h); toast.h = setTimeout(function () { el.style.display = 'none'; }, 2200); }
 function isExp(r) { return r.type !== '수입' && r.type !== '이동'; }   // 이동(계좌이동)은 지출·수입 아님

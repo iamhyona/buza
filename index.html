@@ -326,7 +326,11 @@ var S = { pin: ls.get('pin') || '', key: '', view: 'dash', y: now.getFullYear(),
   cache: {}, years: null, f: {}, edit: null, flt: fltDefault(), open: {}, ls: null };
 S.sort = ['new', 'old', 'amt', 'low'].indexOf(ls.get('sort')) >= 0 ? ls.get('sort') : 'new';   // 내역 정렬: 최신순 / 고액순
 
-function fltDefault() { var y = new Date().getFullYear(); return { from: y + '-01-01', to: y + '-12-31', type: '', cat: [], pay: [], kind: [], q: '', sort: 'new' }; }
+// 필터 기본: 이번 달 1일 ~ 오늘
+function fltDefault() {
+  var d = new Date(), ym = d.getFullYear() + '-' + ('0' + (d.getMonth() + 1)).slice(-2);
+  return { from: ym + '-01', to: ym + '-' + ('0' + d.getDate()).slice(-2), type: '', cat: [], pay: [], kind: [], q: '', sort: 'new' };
+}
 function pad(n) { return (n < 10 ? '0' : '') + n; }
 function fmt(n) { return Math.round(n).toLocaleString('ko-KR'); }
 function cfmt(n) { n = Math.round(n); return n >= 1000000 ? Math.round(n / 10000).toLocaleString('ko-KR') + '만' : fmt(n); }
@@ -678,7 +682,7 @@ function renderList() {
 
 /* ───── FILTER ───── */
 function fchips(id, list, arr) {
-  return '<div class="chips" id="' + id + '">' + list.map(function (v) { return '<button class="' + (arr.indexOf(v) >= 0 ? 'on' : '') + '" data-v="' + esc(v) + '">' + esc(v) + '</button>'; }).join('') + '</div>';
+  return '<div class="chips" id="' + id + '"><button class="' + (arr.length ? '' : 'on') + '" data-all="1">전체</button>' + list.map(function (v) { return '<button class="' + (arr.indexOf(v) >= 0 ? 'on' : '') + '" data-v="' + esc(v) + '">' + esc(v) + '</button>'; }).join('') + '</div>';
 }
 // 필터: 기간(시작일~종료일)에 걸친 연도 파일
 function fYears(F) {
@@ -709,12 +713,12 @@ function renderFilter() {
     var cats = merge(meta.cats || [], used(function (r) { return r.cat; })), pays = merge(meta.pays || [], used(function (r) { return r.pay; })), kinds = merge(meta.kinds || [], used(function (r) { return r.kind; }));
     var rows = fRows(F, ds), t = totals(rows);
     var h = '<div class="card"><div class="fl">기간</div><div class="frow"><div class="f"><label>시작일</label><input type="date" id="fFrom" value="' + F.from + '"></div><div class="f"><label>종료일</label><input type="date" id="fTo" value="' + F.to + '"></div></div>'
+      + '<div class="fl">정렬</div><div class="chips" id="fs">' + ['new', 'old', 'amt', 'low'].map(function (k) { return '<button class="' + (F.sort === k ? 'on' : '') + '" data-v="' + k + '">' + SORTS[k] + '</button>'; }).join('') + '</div>'
       + '<div class="fl">구분</div><div class="chips" id="ft">' + ['전체', '지출', '수입'].map(function (v) { return '<button class="' + ((F.type || '전체') === v ? 'on' : '') + '" data-v="' + v + '">' + v + '</button>'; }).join('') + '</div>'
       + '<div class="fl">카테고리</div>' + fchips('fc', cats, F.cat)
       + '<div class="fl">결제수단</div>' + fchips('fp', pays, F.pay)
       + '<div class="fl">카드·계좌</div>' + fchips('fk', kinds, F.kind)
-      + '<div class="fl">검색</div><input class="search" id="fq" placeholder="내용 · 메모 · 함께한 사람" value="' + esc(F.q) + '">'
-      + '<div class="fl">정렬</div><div class="chips" id="fs">' + ['new', 'old', 'amt', 'low'].map(function (k) { return '<button class="' + (F.sort === k ? 'on' : '') + '" data-v="' + k + '">' + SORTS[k] + '</button>'; }).join('') + '</div></div>'
+      + '<div class="fl">검색</div><input class="search" id="fq" placeholder="내용 · 메모 · 함께한 사람" value="' + esc(F.q) + '"></div>'
       + '<div class="res"><span class="mute">' + rows.length + '건 <button class="reset" id="frs">필터 해제</button></span><span><b class="exp">-' + fmt(t.e) + '</b> <b class="inc">+' + fmt(t.i) + '</b></span></div>'
       + '<button class="fgo" id="fgo"' + (rows.length ? '' : ' disabled') + '>' + (rows.length ? rows.length + '건 내역 보기' : '조건에 맞는 내역이 없어요') + '</button>';
     $('#main').innerHTML = h;
@@ -728,7 +732,10 @@ function renderFilter() {
     $$('#ft button').forEach(function (b) { b.onclick = function () { F.type = b.dataset.v === '전체' ? '' : b.dataset.v; renderFilter(); }; });
     [['fc', 'cat'], ['fp', 'pay'], ['fk', 'kind']].forEach(function (p) {
       $$('#' + p[0] + ' button').forEach(function (b) { b.onclick = function () {
-        var a = F[p[1]], i = a.indexOf(b.dataset.v); if (i >= 0) a.splice(i, 1); else a.push(b.dataset.v); renderFilter();
+        var a = F[p[1]];
+        if (b.dataset.all) a.length = 0;   // 전체 = 조건 없음
+        else { var i = a.indexOf(b.dataset.v); if (i >= 0) a.splice(i, 1); else a.push(b.dataset.v); }
+        renderFilter();
       }; });
     });
     $$('#fs button').forEach(function (b) { b.onclick = function () { F.sort = b.dataset.v; renderFilter(); }; });

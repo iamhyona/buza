@@ -34,7 +34,7 @@ header { position:sticky; top:0; z-index:10; background:var(--bg); padding:calc(
 .ib { width:38px; height:38px; border:0; border-radius:50%; background:#fff; display:inline-flex; align-items:center; justify-content:center; color:var(--sub); padding:0; flex:none; }
 .ib svg { width:19px; height:19px; }
 .ib.on { background:var(--txt); color:#fff; }
-nav { display:flex; justify-content:space-between; max-width:560px; margin:6px auto 0; border-bottom:1px solid var(--line); }
+nav { display:flex; justify-content:flex-start; gap:20px; max-width:560px; margin:6px auto 0; border-bottom:1px solid var(--line); }
 nav button { flex:none; border:0; background:none; padding:12px 0 10px; font-size:12px; font-weight:700; letter-spacing:.03em; color:var(--faint); border-bottom:2px solid transparent; margin-bottom:-1px; }
 nav button.on { color:var(--txt); border-bottom-color:var(--txt); }
 
@@ -356,7 +356,7 @@ function call(fn) {
   return run(tries).then(function (o) { if (!o.ok) throw new Error(o.error || '오류가 났어요'); return o.data; });
 }
 // 새 버전이 올라오면 자동으로 새로 불러오기 (깃허브 페이지는 브라우저에 최대 10분 저장됨)
-var APP_VER = '20261004a';
+var APP_VER = '20261004b';
 function checkUpdate() {
   fetch('index.html?t=' + Date.now(), { cache: 'no-store' }).then(function (r) { return r.text(); }).then(function (t) {
     var m = t.match(/var APP_VER = '(\w+)'/);

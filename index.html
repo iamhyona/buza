@@ -566,7 +566,7 @@ function renderFilter(d) {
     + '<div class="fl">결제수단</div>' + fchips('fp', pays, F.pay)
     + '<div class="fl">카드·계좌</div>' + fchips('fk', kinds, F.kind)
     + '<div class="fl">검색</div><input class="search" id="fq" placeholder="내용 · 메모 · 함께한 사람" value="' + esc(F.q) + '"></div>'
-    + '<div class="res"><span class="mute">' + rows.length + '건 <button class="reset" id="frs">초기화</button></span><span><b class="exp">-' + fmt(t.e) + '</b> <b class="inc">+' + fmt(t.i) + '</b></span></div>'
+    + '<div class="res"><span class="mute">' + rows.length + '건 <button class="reset" id="frs">필터 해제</button></span><span><b class="exp">-' + fmt(t.e) + '</b> <b class="inc">+' + fmt(t.i) + '</b></span></div>'
     + (rows.length ? itemsHtml(rows) : '<div class="empty">조건에 맞는 내역이 없어요</div>');
   $('#main').innerHTML = errCard(d) + h;
   $('#fy').onchange = function () { F.y = Number(this.value); render(); };

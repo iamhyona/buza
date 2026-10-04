@@ -295,7 +295,7 @@ html.lock { overflow:hidden; }
 <div class="bs" id="ed">
   <button class="cap" id="capBtn">캡처로 입력 (카톡 · 결제 알림)</button><input type="file" id="capIn" accept="image/*" multiple class="hide">
   <div class="qi" id="qiBox"><textarea id="qiT" rows="1" placeholder="예) 10/3 3만원 올리브영 / 현대"></textarea><button type="button" id="qiB">입력</button></div>
-  <div class="qih" id="qiH">행갈이 하면 여러 건 입력 가능</div>
+  <div class="qih" id="qiH">(카드종류생략가능) 행갈이 시 여러 건 입력 가능</div>
   <div class="seg" id="type"><button data-v="지출" class="e">지출</button><button data-v="수입" class="i">수입</button></div>
   <div class="amt"><input id="fAmt" inputmode="numeric" placeholder="0"><span>원</span></div>
   <div class="frow"><div class="f"><label>날짜<span class="req">*</span></label><input id="fDate" type="date"></div><div class="f"><label>시각</label><input id="fTime" type="time"></div></div>
@@ -375,7 +375,7 @@ function call(fn) {
   return run(tries).then(function (o) { if (!o.ok) throw new Error(o.error || '오류가 났어요'); return o.data; });
 }
 // 새 버전이 올라오면 자동으로 새로 불러오기 (깃허브 페이지는 브라우저에 최대 10분 저장됨)
-var APP_VER = '20261004m';
+var APP_VER = '20261004n';
 function checkUpdate() {
   fetch('index.html?t=' + Date.now(), { cache: 'no-store' }).then(function (r) { return r.text(); }).then(function (t) {
     var m = t.match(/var APP_VER = '(\w+)'/);

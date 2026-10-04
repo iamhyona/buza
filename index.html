@@ -206,6 +206,11 @@ html.lock { overflow:hidden; }
 
 /* 캡처 입력 */
 .cap { width:100%; border:0; background:#FEE500; color:#191f28; border-radius:14px; padding:13px; font-weight:700; font-size:15px; margin-bottom:14px; }
+/* 한 줄 입력 */
+.qi { display:flex; gap:8px; align-items:stretch; margin:-4px 0 6px; }
+.qi textarea { flex:1; min-width:0; border:0; background:var(--chip); border-radius:12px; padding:12px; font-size:16px; line-height:1.45; outline:0; resize:none; min-height:46px; height:46px; max-height:140px; font-family:inherit; }
+.qi button { flex:none; align-self:flex-start; height:46px; border:0; background:var(--txt); color:#fff; border-radius:12px; padding:0 16px; font-weight:700; font-size:15px; }
+.qih { font-size:12px; color:var(--mute); margin:0 2px 16px; line-height:1.5; }
 .req { color:var(--exp); margin-left:2px; }
 .rvi { display:flex; gap:10px; align-items:flex-start; padding:14px 0; border-top:1px solid #f2f4f6; }
 .rvi input[type=checkbox] { width:22px; height:22px; margin:10px 0 0; accent-color:#191f28; flex:none; }
@@ -289,6 +294,8 @@ html.lock { overflow:hidden; }
 <div class="dimbg" id="dimbg"></div>
 <div class="bs" id="ed">
   <button class="cap" id="capBtn">캡처로 입력 (카톡 · 결제 알림)</button><input type="file" id="capIn" accept="image/*" multiple class="hide">
+  <div class="qi" id="qiBox"><textarea id="qiT" rows="1" placeholder="한 줄로 입력  예) 10/3 3만원 올리브영 / 현대"></textarea><button type="button" id="qiB">입력</button></div>
+  <div class="qih" id="qiH">날짜 · 금액 · 내역 / 카드 순서로 쓰면 자동으로 채워져요. 여러 줄이면 한 번에 여러 건</div>
   <div class="seg" id="type"><button data-v="지출" class="e">지출</button><button data-v="수입" class="i">수입</button></div>
   <div class="amt"><input id="fAmt" inputmode="numeric" placeholder="0"><span>원</span></div>
   <div class="frow"><div class="f"><label>날짜<span class="req">*</span></label><input id="fDate" type="date"></div><div class="f"><label>시각</label><input id="fTime" type="time"></div></div>
@@ -368,7 +375,7 @@ function call(fn) {
   return run(tries).then(function (o) { if (!o.ok) throw new Error(o.error || '오류가 났어요'); return o.data; });
 }
 // 새 버전이 올라오면 자동으로 새로 불러오기 (깃허브 페이지는 브라우저에 최대 10분 저장됨)
-var APP_VER = '20261004j';
+var APP_VER = '20261004k';
 function checkUpdate() {
   fetch('index.html?t=' + Date.now(), { cache: 'no-store' }).then(function (r) { return r.text(); }).then(function (t) {
     var m = t.match(/var APP_VER = '(\w+)'/);
@@ -942,6 +949,7 @@ function openEd(row) {
   $('#fText').value = S.f.text || ''; $('#fMemo').value = S.f.memo || ''; $('#fWho').value = S.f.who || '';
   $('#del').style.display = row ? '' : 'none';
   $('#capBtn').style.display = row ? 'none' : '';
+  $('#qiBox').style.display = $('#qiH').style.display = row ? 'none' : ''; $('#qiT').value = ''; $('#qiT').style.height = '';
   drawEd();
   openBs('#ed');
   if (!row) setTimeout(function () { $('#fAmt').focus(); }, 260);
@@ -1151,6 +1159,58 @@ function shrink(file) {
   });
 }
 function hold(t) { var el = $('#toast'); clearTimeout(toast.h); el.textContent = t; el.style.display = t ? 'block' : 'none'; }
+/* ───── 한 줄 입력: "10/3 3만원 올리브영 / 현대" ───── */
+// 금액: 15000 · 15,000원 · 3만원 · 1.5만 · 3만5천 · 5천원 (+를 붙이면 수입)
+function qiAmt(t) {
+  var m = String(t).replace(/,/g, '').match(/^(\+)?(\d+(?:\.\d+)?)(만|천)?(?:(\d+)천)?원?$/);
+  if (!m) return null;
+  var v = Number(m[2]) * (m[3] === '만' ? 10000 : m[3] === '천' ? 1000 : 1) + (m[4] ? Number(m[4]) * 1000 : 0);
+  return v >= 10 ? { v: Math.round(v), inc: !!m[1] } : null;
+}
+function qiLine(s) {
+  s = String(s || '').trim(); if (!s) return null;
+  var date = '', y = Number(TODAY.slice(0, 4)), m;
+  if ((m = s.match(/^(오늘|어제|그제)\s*/))) {
+    var d = new Date(); d.setDate(d.getDate() - { 오늘: 0, 어제: 1, 그제: 2 }[m[1]]);
+    date = d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate()); s = s.slice(m[0].length);
+  } else if ((m = s.match(/^(?:(\d{4})[.\/-])?(\d{1,2})\s*(?:[\/.\-]|월\s*)(\d{1,2})일?\s+/))) {
+    date = (m[1] || y) + '-' + pad(Number(m[2])) + '-' + pad(Number(m[3]));
+    if (!m[1] && date > TODAY) date = (y - 1) + date.slice(4);   // 앞으로의 날짜면 작년
+    s = s.slice(m[0].length);
+  }
+  var parts = s.split('/'), main = parts[0], kindTok = parts.slice(1).join('/').trim();
+  var toks = main.trim().split(/\s+/), amt = null, rest = [];
+  toks.forEach(function (t) { var a = !amt && qiAmt(t); if (a) amt = a; else rest.push(t); });
+  if (!amt) return { err: true, src: s };
+  return { date: date, amt: amt.v, type: amt.inc ? '수입' : '지출', text: rest.join(' '), kindTok: kindTok };
+}
+// 예전 내역에서 같은 가게 · 카드 이름 찾아서 카테고리 · 카드 채우기
+function qiGuess(it, d) {
+  d = d || {};
+  if (it.kindTok) {
+    var q = it.kindTok.replace(/\s/g, '').toLowerCase(), ks = d.kinds || [];
+    var hit = ks.filter(function (k) { var kk = k.replace(/\s/g, '').toLowerCase(); return kk === q; })[0]
+      || ks.filter(function (k) { var kk = k.replace(/\s/g, '').toLowerCase(); return kk.indexOf(q) >= 0 || q.indexOf(kk.replace(/카드|체크|신용/g, '')) >= 0 && kk.replace(/카드|체크|신용/g, ''); })[0];
+    it.kind = hit || it.kindTok;
+  }
+  var t = String(it.text).replace(/\s/g, ''), rows = (d.rows || []).slice().reverse();
+  var r = t && (rows.filter(function (r) { return String(r.text || '').replace(/\s/g, '') === t; })[0]
+    || rows.filter(function (r) { var x = String(r.text || '').replace(/\s/g, ''); return x.length > 1 && (x.indexOf(t) >= 0 || t.indexOf(x) >= 0); })[0]);
+  if (r) { if (!it.cat && it.type !== '수입') it.cat = r.cat || ''; if (!it.kind) it.kind = r.kind || ''; }
+}
+$('#qiT').oninput = function () { this.style.height = '46px'; this.style.height = Math.min(140, this.scrollHeight) + 'px'; };
+$('#qiB').onclick = function () {
+  var lines = $('#qiT').value.split(/\n/).map(qiLine).filter(Boolean);
+  if (!lines.length) return toast('예) 10/3 3만원 올리브영 / 현대');
+  var bad = lines.filter(function (l) { return l.err; });
+  if (bad.length) return toast('금액을 못 찾은 줄이 있어요: ' + bad[0].src);
+  RV = lines.map(function (l) { return { on: true, q: true, book: S.key, type: l.type, text: l.text, amt: l.amt, time: '', cat: '', kind: '', kindTok: l.kindTok, date: l.date || TODAY }; });
+  var ds = RV.map(function (it) { return it.date; }).filter(function (d, i, a) { return a.indexOf(d) === i; });
+  $('#rvDate').value = ds.length === 1 ? ds[0] : TODAY;
+  if (ds.length === 1) RV.forEach(function (it) { it.date = ''; });
+  S.rvSrc = '한 줄 입력에서';
+  closeBs(); setTimeout(function () { loadRv(true); }, 230);
+};
 function readCaps(fs) {
   var items = [], i = 0;
   var next = function () {
@@ -1162,6 +1222,7 @@ function readCaps(fs) {
   next().then(function () {
     hold('');
     if (!items.length) { toast('지출 내역을 찾지 못했어요. 직접 입력해 주세요'); return openEd(null); }
+    S.rvSrc = '캡처에서';
     RV = items.map(function (it) { return { on: true, book: it.book || S.key, type: it.type || '지출', text: it.text || '', amt: it.amt, time: it.time || '', cat: it.cat || '', kind: it.kind || '', date: it.date || '' }; });
     // 결제 알림은 날짜(어제·10월 3일 등)를 읽어 옴: 모두 같은 날이면 위 날짜칸에, 다르면 건마다 따로
     var ds = RV.map(function (it) { return it.date; }).filter(function (d, i, a) { return d && a.indexOf(d) === i; });
@@ -1185,6 +1246,7 @@ function loadRv(first) {
     var D = {}; books.forEach(function (k, i) { D[k] = ds[i]; });
     RV.forEach(function (it) {
       var d = D[it.book];
+      if (it.q) { qiGuess(it, d); it.q = false; }
       it.dup = !!d && d.rows.some(function (r) { return r.date === (it.date || date) && r.amt === Number(it.amt) && r.type !== '수입'; });
       if (first && it.dup) it.on = false;
     });
@@ -1195,7 +1257,7 @@ function loadRv(first) {
 }
 function drawRv() {
   var D = S.rvD || {};
-  $('#rvT').textContent = '캡처에서 ' + RV.length + '건 찾았어요';
+  $('#rvT').textContent = (S.rvSrc || '캡처에서') + ' ' + RV.length + '건 찾았어요';
   $('#rvL').innerHTML = RV.map(function (it, i) {
     var d = D[it.book] || {}, cats = (d.expCats && d.expCats.length ? d.expCats : d.cats) || [];
     var cl = cats.slice(); if (it.cat && cl.indexOf(it.cat) < 0) cl.push(it.cat);
@@ -1206,6 +1268,7 @@ function drawRv() {
       + '<input data-f="time" type="time" value="' + esc(it.time) + '">'
       + (it.date ? '<input class="w" data-f="date" type="date" value="' + esc(it.date) + '">' : '')
       + '<select class="w" data-f="cat"><option value="">카테고리 (선택)</option>' + cl.map(function (c) { return '<option ' + (c === it.cat ? 'selected' : '') + '>' + esc(c) + '</option>'; }).join('') + '</select>'
+      + (function () { var kl = (d.kinds || []).slice(); if (it.kind && kl.indexOf(it.kind) < 0) kl.push(it.kind); return '<select class="w" data-f="kind"><option value="">카드·계좌 (선택)</option>' + kl.map(function (k) { return '<option ' + (k === it.kind ? 'selected' : '') + '>' + esc(k) + '</option>'; }).join('') + '</select>'; })()
       + (it.dup ? '<div class="dup w">이 날짜에 같은 금액 내역이 이미 있어요</div>' : '') + '</div></div>';
   }).join('');
   $$('#rvL .rvi').forEach(function (row) {
